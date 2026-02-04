@@ -1,20 +1,22 @@
 import asyncio
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, List
 
-from dotenv import load_dotenv
 from openai import OpenAI
+from loguru import logger
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from dao.database import async_session_maker
+from config import database_url
+from dao.models import User, Videos, Video_Snapshots
 
 BASE_DIR = Path(__file__).parent.parent
 
-
-def _load_env() -> None:
-    load_dotenv(dotenv_path=BASE_DIR / '.env')
+engine = create_async_engine(url=database_url)
+async_session_maker = async_sessionmaker(engine, class_=AsyncSession)
 
 
 def _validate_readonly_query(query: str) -> None:
@@ -23,34 +25,29 @@ def _validate_readonly_query(query: str) -> None:
         raise ValueError('Разрешены только запросы SELECT/CTE')
 
 
-async def _fetch_schema_summary() -> str:
-    query = text(
-        """
-        SELECT table_name, column_name, data_type
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-        ORDER BY table_name, ordinal_position
-        """
-    )
-    async with async_session_maker() as session:
-        result = await session.execute(query)
-        rows = result.fetchall()
+def _model_columns(model) -> List[str]:
+    return [column.name for column in model.__table__.columns]
 
-    if not rows:
-        return 'В базе данных нет таблиц в схеме public.'
 
-    tables: Dict[str, List[str]] = {}
-    for table_name, column_name, data_type in rows:
-        tables.setdefault(table_name, []).append(f"{column_name} ({data_type})")
+def _schema_summary() -> str:
+    lines = [
+        "Схема базы данных (поля из моделей):",
+        f"- users: {', '.join(_model_columns(User))}",
+        f"- videos: {', '.join(_model_columns(Videos))}",
+        f"- video_snapshots: {', '.join(_model_columns(Video_Snapshots))}",
+    ]
+    return "\n".join(lines)
 
-    lines = ['Схема базы данных:']
-    for table_name, columns in tables.items():
-        lines.append(f"- {table_name}: {', '.join(columns)}")
-    return '\n'.join(lines)
+
+def _configure_logging() -> None:
+    log_path = BASE_DIR / "ai_db_agent.log"
+    logger.remove()
+    logger.add(log_path, format="{time} | {level} | {message}", level="INFO", rotation="5 MB")
 
 
 async def _run_sql_query(query: str) -> List[Dict[str, Any]]:
     _validate_readonly_query(query)
+    logger.info("Executing SQL query: {}", query)
     async with async_session_maker() as session:
         result = await session.execute(text(query))
         rows = result.fetchall()
@@ -59,14 +56,27 @@ async def _run_sql_query(query: str) -> List[Dict[str, Any]]:
     return [dict(zip(columns, row)) for row in rows]
 
 
-async def ask_with_db(user_query: str, model: str = "deepseek/deepseek-v3.2") -> str:
-    _load_env()
+def _extract_single_number(text_value: str) -> str:
+    numbers = re.findall(r"-?\d+(?:[\s.,]\d+)*", text_value)
+    cleaned = [num.replace(" ", "").replace(",", ".") for num in numbers]
+    unique_numbers = [num for num in cleaned if num]
+    if len(unique_numbers) == 1:
+        return unique_numbers[0]
+    raise ValueError("Ответ должен содержать ровно одно число.")
+
+
+async def ask_with_db(
+    user_query: str,
+    model: str = "deepseek/deepseek-v3.2",
+    extra_context: str | None = None,
+) -> str:
+    _configure_logging()
     client = OpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key=os.getenv('GPT_CREDENTIALS'),
     )
 
-    schema_summary = await _fetch_schema_summary()
+    schema_summary = _schema_summary()
 
     tools = [
         {
@@ -88,18 +98,24 @@ async def ask_with_db(user_query: str, model: str = "deepseek/deepseek-v3.2") ->
         }
     ]
 
+    user_content = f"{user_query}\n\n{schema_summary}"
+    if extra_context:
+        user_content = f"{user_content}\n\nДополнительный контекст:\n{extra_context}"
+
     messages = [
         {
             "role": "system",
-            "content": (
-                "Ты помощник, который отвечает на вопросы по данным в базе Postgres. "
-                "Используй инструмент run_sql_query для получения данных. "
-                "Разрешены только SELECT/CTE запросы. Ответь кратко и по существу."
-            ),
+            "content": ('Ты Ассистент, который работает с базой данных пользователя.' 
+                        'В твоем наличии две базы - videos - здесь все о видео и videos_snapshots - они являются частью таблицы videos. В ней представлены части одного видео во времени, у них есть связь по id'
+                        'В базе videos - следующие колонки: id, creator_id, video_created_at, views_count, likes_count, comments_count, reports_count, created_at, updated_at'
+                        'В базе video_snapshots - следующие колонки: id, video_id, views_count, likes_count, comments_count, reports_count, delta_views_count, delta_likes_count, delta_comments_count, delta_reports_count, created_at и updated_at.'
+                        'Твоя задача написать sql-запрос, который бы полностью удовлетворил пользователя и предоставил ему всю необходимую информацию'
+                        'Пример: User: Сколько видео набрало больше 100 000 просмотров за всё время?; You: SELECT COUNT(id) FROM videos WHERE view_count >=100000'
+                        )
         },
         {
             "role": "user",
-            "content": f"{user_query}\n\n{schema_summary}",
+            "content": user_content,
         },
     ]
 
@@ -137,9 +153,9 @@ async def ask_with_db(user_query: str, model: str = "deepseek/deepseek-v3.2") ->
             model=model,
             messages=messages,
         )
-        return follow_up.choices[0].message.content
+        return _extract_single_number(follow_up.choices[0].message.content)
 
-    return message.content
+    return _extract_single_number(message.content)
 
 
 def ask_with_db_sync(user_query: str, model: str = "deepseek/deepseek-v3.2") -> str:
