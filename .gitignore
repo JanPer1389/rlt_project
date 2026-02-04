@@ -97,3 +97,7 @@ botvenv/
 .vscode/
 
 requirements.txt
+alembic.ini
+migrations/
+log.txt
+.gitignore

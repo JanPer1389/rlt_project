@@ -1,7 +1,7 @@
 from typing import List
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
-from bot.config import settings, admins
+from config import settings
 from loguru import logger
 
 def main_kbs() -> InlineKeyboardMarkup:

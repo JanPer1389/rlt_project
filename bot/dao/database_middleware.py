@@ -1,7 +1,7 @@
 from typing import Dict, Callable, Any, Awaitable
 from aiogram import BaseMiddleware
 from aiogram.types import Message, CallbackQuery
-from bot.dao.database import async_session_maker
+from dao.database import async_session_maker
 
 class BaseDatabaseMiddleware(BaseMiddleware):
     async def __call__(

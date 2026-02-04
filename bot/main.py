@@ -1,25 +1,31 @@
 import asyncio
 from aiogram.types import BotCommand, BotCommandScopeDefault
 from loguru import logger
-from bot.user.user_router import user_router
-from bot.config import bot, dp
-from bot.dao.database_middleware import DatabaseMiddlewareWithCommit, DatabaseMiddlewareWithoutCommit
+from user.user_router import user_router
+from config import bot, dp
+from dao.database_middleware import DatabaseMiddlewareWithCommit, DatabaseMiddlewareWithoutCommit
 import sys
 from pathlib import Path
-
+import os
 sys.path.append(str(Path(__file__).parent.parent))
 
 
+BASE_DIR = Path(__file__).parent.parent
+
+ENV_PATH = BASE_DIR/'.env'
+
 async def start_bot():
     try:
-        await bot.send_message('Я запущен')
+        id = os.getenv('MY_ID')
+        await bot.send_message(chat_id=id,
+                               text='Я запущен')
         logger.info('Бот запущен')
     except Exception as e:
         logger.error(f"Failed to start bot: {e}")
 
 async def stop_bot():
     try:
-        await bot.send_message('Я умер')
+        await bot.send_message(text = 'Я умер')
     except Exception as e:
         logger.error(f"Failed to start bot: {e}")
     
@@ -28,8 +34,8 @@ async def stop_bot():
     
 
 async def main():
-    dp.update.middleware.register(DatabaseMiddlewareWithCommit)
-    dp.update.middleware.register(DatabaseMiddlewareWithoutCommit)
+    dp.update.middleware.register(DatabaseMiddlewareWithCommit())
+    dp.update.middleware.register(DatabaseMiddlewareWithoutCommit())
     dp.include_router(user_router)
     dp.startup.register(start_bot)
     dp.shutdown.register(stop_bot)

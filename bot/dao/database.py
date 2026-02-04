@@ -1,5 +1,5 @@
 from datetime import datetime
-from bot.config import database_url
+from config import database_url
 from sqlalchemy import func, TIMESTAMP, Integer
 from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase
 from sqlalchemy.ext.asyncio import AsyncAttrs, async_sessionmaker, create_async_engine, AsyncSession

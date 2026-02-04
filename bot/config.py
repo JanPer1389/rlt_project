@@ -23,7 +23,8 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str
     POSTGRES_PORT: int    
     model_config = SettingsConfigDict(
-        env_file=ENV_PATH
+        env_file=ENV_PATH,
+        extra='allow'
     )
     
     @property

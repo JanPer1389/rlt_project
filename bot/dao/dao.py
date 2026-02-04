@@ -6,6 +6,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from bot.dao.base import BaseDAO
-from bot.dao.models import User, Video_Snapshots, Videos
+from dao.base import BaseDAO
+from dao.models import User, Video_Snapshots, Videos
 
