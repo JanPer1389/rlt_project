@@ -16,7 +16,9 @@ async def cmd_start(message: Message):
 
 @user_router.callback_query(F.data == 'chat')
 async def chat_realisation(call:CallbackQuery):
-    pass
+    await call.answer(text='Задайте свой запрос к нашей БД')
+
+
 
 
     
