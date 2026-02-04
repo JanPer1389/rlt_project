@@ -7,8 +7,11 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.client.default import DefaultBotProperties
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).parent.parent
+ENV_PATH = BASE_DIR/'.env'
+load_dotenv(dotenv_path=BASE_DIR/'.env')
 
 class Settings(BaseSettings):
     BOT_TOKEN: str 
@@ -20,9 +23,8 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str
     POSTGRES_PORT: int    
     model_config = SettingsConfigDict(
-        env_file=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")
+        env_file=ENV_PATH
     )
-    
     
     @property
     def DB_URL(self) -> str:
